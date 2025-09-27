@@ -23,7 +23,20 @@ jobs:
           node-version: '18'
       - name: Install mobile dependencies
         run: |
-          cd mobile
-          npm install
+          cd backend || true
+          # backend node/mobile step placeholder if needed
+          true
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+      - name: Install Expo CLI (for some checks)
+        run: npm install -g expo-cli
+      - name: Frontend typecheck
+        run: npm run typecheck
+        working-directory: frontend
+      - name: Frontend lint
+        run: npm run lint
+        working-directory: frontend
       - name: Run mobile tests
         run: echo "No tests yet"

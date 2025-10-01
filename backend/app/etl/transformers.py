@@ -1,8 +1,9 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 import cv2
 import os
 import shutil
 from tqdm import tqdm
+import numpy as np
 
 def extract_frames(data: Dict[str, Any], frame_rate: int = 1) -> Dict[str, Any]:
     """
@@ -30,25 +31,31 @@ def extract_frames(data: Dict[str, Any], frame_rate: int = 1) -> Dict[str, Any]:
     data['frames'] = frames
     return data
 
-def default_transformer(data: Any, **kwargs) -> Any:
-    # No-op transformer
+def default_transformer(data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+    """
+    No-op transformer that passes data through unchanged.
+    
+    Args:
+        data (Dict): Input data
+        **kwargs: Additional arguments (ignored)
+    
+    Returns:
+        Dict: Unchanged input data
+    """
     return data
 
-def extract_face_frames_from_video(detector, video_path, output_dir, num_frames_to_extract, image_size):
+def extract_face_frames_from_videos(data: Dict[str, Any], detector=None, output_base_dir: str = "./extracted_faces", 
+                                   num_frames_to_extract: int = 10, image_size: tuple = (224, 224)) -> Dict[str, Any]:
     """
-    Extracts a set number of face frames from a single video and saves them.
-
-    This function cleans the output directory, reads the video, extracts frames
-    at even intervals, detects the primary face using MTCNN, and saves the
-    cropped/resized face to disk.
-
+    Adds face extraction configuration to the dataset metadata.
+    
     Args:
-        detector (MTCNN): The initialized MTCNN face detector.
-        video_path (str): Path to the video file.
-        output_dir (str): Directory to save the extracted face frames.
-        num_frames_to_extract (int): The number of frames to sample.
-        image_size (tuple): The (width, height) to resize the final face crops to.
-
+        data (Dict): Dataset dictionary containing video information
+        detector: MTCNN face detector instance (for validation)
+        output_base_dir (str): Base directory to save extracted faces
+        num_frames_to_extract (int): Number of frames to extract per video
+        image_size (tuple): Target size for face crops
+    
     Returns:
         list: A list of file paths to the saved face frames.
     """
@@ -74,7 +81,7 @@ def extract_face_frames_from_video(detector, video_path, output_dir, num_frames_
     step = max(1, total_frames // num_frames_to_extract)
     saved_frame_paths = []
     
-    for i in tqdm(range(num_frames_to_extract), desc="Extracting Faces"):
+    for i in range(num_frames_to_extract):
         frame_index = i * step
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
         ret, frame = cap.read()
@@ -87,7 +94,7 @@ def extract_face_frames_from_video(detector, video_path, output_dir, num_frames_
         # If a face is detected, crop, resize, and save it
         if results:
             x, y, width, height = results[0]['box']
-            x, y = max(0, x), max(0, y) # Ensure coordinates are non-negative
+            x, y = max(0, x), max(0, y)  # Ensure coordinates are non-negative
             face = frame[y:y+height, x:x+width]
             
             if face.size == 0:
@@ -99,5 +106,4 @@ def extract_face_frames_from_video(detector, video_path, output_dir, num_frames_
             saved_frame_paths.append(face_path)
 
     cap.release()
-    print(f"Successfully extracted {len(saved_frame_paths)} face frames.\n")
     return saved_frame_paths

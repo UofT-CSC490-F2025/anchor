@@ -4,3 +4,9 @@ psycopg2-binary
 sqlalchemy
 requests
 python-dotenv
+boto3
+opencv-python
+tqdm
+pillow
+tensorflow
+mtcnn

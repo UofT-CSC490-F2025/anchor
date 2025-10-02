@@ -1,0 +1,42 @@
+name: CI
+on:
+  push:
+    branches: [ main, dev ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+      - name: Run backend tests
+        run: echo "No tests yet"
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - name: Install mobile dependencies
+        run: |
+          cd backend || true
+          # backend node/mobile step placeholder if needed
+          true
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+      - name: Install Expo CLI (for some checks)
+        run: npm install -g expo-cli
+      - name: Frontend typecheck
+        run: npm run typecheck
+        working-directory: frontend
+      - name: Frontend lint
+        run: npm run lint
+        working-directory: frontend
+      - name: Run mobile tests
+        run: echo "No tests yet"

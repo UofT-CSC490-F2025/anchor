@@ -12,7 +12,10 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 import { ResponsiveContainer, FlexLayout } from '@/components/responsive/ResponsiveLayout';
 import { AccessibleText, AccessibleButton, AccessibleCard } from '@/components/ui/AccessibleComponents';
+import { TikTokSettings } from '@/components/tiktok/TikTokSettings';
 import { mockApiService, UserSettings } from '@/services/mockApi';
+import { mockAuthAPI } from '@/services/mockAuthService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Spacing, BorderRadius, Elevation } from '@/constants/theme';
 
 export default function SettingsScreen() {
@@ -323,6 +326,15 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        {/* TikTok Integration Section */}
+        <View style={styles.section}>
+          <AccessibleText variant="heading3" style={StyleSheet.flatten([styles.sectionTitle, { color: theme.text }])}>
+            🎵 TikTok Integration
+          </AccessibleText>
+          
+          <TikTokSettings />
+        </View>
+
         {/* Privacy Section */}
         <View style={styles.section}>
           <AccessibleText variant="heading3" style={StyleSheet.flatten([styles.sectionTitle, { color: theme.text }])}>
@@ -448,6 +460,44 @@ export default function SettingsScreen() {
             handleDeleteAccount,
             'danger'
           )}
+        </View>
+
+        {/* Development Testing */}
+        <View style={styles.section}>
+          <AccessibleText variant="heading3" style={StyleSheet.flatten([styles.sectionTitle, { color: theme.text }])}>
+            🧪 Development Testing
+          </AccessibleText>
+          
+          <AccessibleCard style={StyleSheet.flatten([styles.infoCard, { borderColor: theme.border, backgroundColor: theme.card }, Elevation.sm])}>
+            <FlexLayout gap={Spacing.md}>
+              <AccessibleText variant="body" style={{ color: theme.textSecondary }}>
+                Test token expiration behavior
+              </AccessibleText>
+              
+              <AccessibleButton
+                title="Simulate Expired Token"
+                variant="secondary"
+                onPress={async () => {
+                  try {
+                    // Set token expiry to past date
+                    const expiredDate = mockAuthAPI.simulateExpiredToken();
+                    await AsyncStorage.setItem('auth_token_expiry', expiredDate);
+                    
+                    Alert.alert(
+                      'Token Expired', 
+                      'Token expiry has been set to the past. Restart the app or navigate away and back to trigger token validation.',
+                      [
+                        { text: 'OK', style: 'default' }
+                      ]
+                    );
+                  } catch (error) {
+                    Alert.alert('Error', 'Failed to simulate token expiration');
+                  }
+                }}
+                accessibilityLabel="Simulate an expired authentication token for testing"
+              />
+            </FlexLayout>
+          </AccessibleCard>
         </View>
 
         {/* App Info */}

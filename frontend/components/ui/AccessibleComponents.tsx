@@ -7,7 +7,6 @@ import {
   ViewStyle,
   View,
   ActivityIndicator,
-  AccessibilityInfo,
 } from 'react-native';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useScreenSize, getResponsiveFontSize } from '../responsive/ResponsiveLayout';

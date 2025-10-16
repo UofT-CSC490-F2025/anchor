@@ -89,10 +89,33 @@ export class BaseApiService {
   }
 
   private getHeaders(): Record<string, string> {
-    return {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
+
+    // Get auth token from storage or context
+    // This will be injected by the auth context
+    const token = this.getAuthToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    return headers;
+  }
+
+  private getAuthToken(): string | null {
+    // This will be overridden by extending classes that have access to auth context
+    return this.getAuthTokenInternal();
+  }
+
+  // Method to set auth token (called by authenticated services)
+  protected setAuthToken(token: string | null) {
+    (this as any)._authToken = token;
+  }
+
+  protected getAuthTokenInternal(): string | null {
+    return (this as any)._authToken || null;
   }
 
   protected async get<T>(endpoint: string): Promise<ApiResponse<T>> {

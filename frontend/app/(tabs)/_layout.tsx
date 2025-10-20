@@ -15,19 +15,60 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarAccessibilityLabel: 'Tab navigation',
+        tabBarStyle: {
+          backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+          borderTopColor: colorScheme === 'dark' ? '#2C2C2E' : '#E5E5EA',
+          paddingBottom: 8,
+          paddingTop: 8,
+          height: 88,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
+          marginTop: 4,
+        },
       }}>
       <Tabs.Screen
-        name="index"
+        name="dashboard"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'Dashboard',
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol 
+              size={28} 
+              name={focused ? "chart.bar.fill" : "chart.bar"} 
+              color={color} 
+            />
+          ),
+          tabBarAccessibilityLabel: 'Dashboard - View analytics and flagged content overview',
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="index"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Content',
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol 
+              size={28} 
+              name={focused ? "list.bullet.rectangle.fill" : "list.bullet.rectangle"} 
+              color={color} 
+            />
+          ),
+          tabBarAccessibilityLabel: 'Content - View and review flagged content',
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol 
+              size={28} 
+              name={focused ? "gearshape.fill" : "gearshape"} 
+              color={color} 
+            />
+          ),
+          tabBarAccessibilityLabel: 'Settings - Customize app preferences',
         }}
       />
     </Tabs>

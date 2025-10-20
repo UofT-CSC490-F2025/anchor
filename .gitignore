@@ -7,3 +7,5 @@ node_modules/
 # General
 .DS_Store
 *.sqlite3
+downloads/
+frames/

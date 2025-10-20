@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
-from app.api.auth import get_current_user
-from app.etl.pipeline import ETLPipeline
-from app.etl.importers import import_faceforensicspp
-from app.etl.transformers import default_transformer
-from app.etl.loaders import default_loader
+from api.auth import get_current_user
+from etl.pipeline import ETLPipeline
+from etl.importers import import_faceforensicspp
+from etl.transformers import default_transformer
+from etl.loaders import default_loader
 
 router = APIRouter()
 

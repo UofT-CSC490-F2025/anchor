@@ -18,8 +18,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ResponsiveContainer, FlexLayout } from '@/components/responsive/ResponsiveLayout';
 import { AccessibleText, AccessibleButton } from '@/components/ui/AccessibleComponents';
 import { ContentFilter, SortControl, ContentCard } from '@/components/ui/InteractiveComponents';
+import { FactCheckResults } from '@/components/ui/FactCheckResults';
 import { useAuth } from '@/contexts/AuthContext';
-import { useApiServices } from '@/hooks/useApiServices';
+import { useApiServices, useFlexibleContentService } from '@/hooks/useApiServices';
 import { Colors, Spacing, BorderRadius, Elevation } from '@/constants/theme';
 import { validateTikTokUrl, getExampleUrls } from '@/utils/urlValidation';
 import type { FlaggedContent, ContentType } from '@/types';
@@ -41,6 +42,18 @@ export default function ContentScreen() {
     type: 'success' | 'error' | null;
     message: string;
   }>({ type: null, message: '' });
+  const [analysisResults, setAnalysisResults] = useState<{
+    file_name: string;
+    fact_check_results: {
+      version: string;
+      claim: string;
+      results: Array<{
+        text: string;
+        index: number;
+        score: number;
+      }>;
+    };
+  } | null>(null);
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -50,6 +63,7 @@ export default function ContentScreen() {
   
   // Get API services (will return null services if not authenticated)
   const { contentService, isReady } = useApiServices();
+  const flexibleContentService = useFlexibleContentService();
 
   const filterOptions = useMemo(() => [
     { value: 'all' as const, label: 'All Types', count: flaggedContent?.length || 0 },
@@ -178,7 +192,7 @@ export default function ContentScreen() {
       return;
     }
 
-    if (!contentService || !isReady) {
+    if (!flexibleContentService) {
       setUrlSubmissionStatus({
         type: 'error',
         message: 'Service not available. Please try again later.'
@@ -190,33 +204,50 @@ export default function ContentScreen() {
     setUrlSubmissionStatus({ type: null, message: '' });
 
     try {
-      // For now, we'll simulate the API call since we don't have the actual endpoint
-      // In a real implementation, this would call something like:
-      // await contentService.submitUrlForAnalysis(urlInput.trim());
+      console.log('🔍 Submitting URL for analysis:', urlInput.trim());
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Use the flexible service that will route to real or mock API
+      const result = await flexibleContentService.analyzeUrl(urlInput.trim());
       
-      // Mock success response
-      setUrlSubmissionStatus({
-        type: 'success',
-        message: 'URL submitted successfully! Analysis will begin shortly and results will appear in your content list.'
-      });
+      console.log('✅ Analysis result:', result);
+      
+      // Validate the response structure before setting it
+      if (result && result.fact_check_results && result.fact_check_results.results && Array.isArray(result.fact_check_results.results)) {
+        // Store the results for display
+        setAnalysisResults(result);
+        
+        setUrlSubmissionStatus({
+          type: 'success',
+          message: `Analysis complete! Claim-worthiness score: ${
+            result.fact_check_results.results[0]?.score 
+              ? Math.round(result.fact_check_results.results[0].score * 100) + '%'
+              : 'N/A'
+          }. See detailed results below.`
+        });
+      } else {
+        console.error('Invalid response structure:', result);
+        setUrlSubmissionStatus({
+          type: 'error',
+          message: 'Received invalid response from analysis service. Please try again.'
+        });
+        return;
+      }
       
       // Clear the input and close modal after a delay
       setTimeout(() => {
         setUrlInput('');
         setShowUrlModal(false);
         setUrlSubmissionStatus({ type: null, message: '' });
+        setAnalysisResults(null);
         // Refresh the content list to potentially show new analysis
         loadContent(true);
-      }, 3000);
+      }, 8000); // Longer delay to show results
 
     } catch (error) {
-      console.error('Failed to submit URL for analysis:', error);
+      console.error('❌ Failed to submit URL for analysis:', error);
       setUrlSubmissionStatus({
         type: 'error',
-        message: 'Failed to submit URL for analysis. Please try again.'
+        message: error instanceof Error ? error.message : 'Failed to submit URL for analysis. Please try again.'
       });
     } finally {
       setIsSubmittingUrl(false);
@@ -226,6 +257,7 @@ export default function ContentScreen() {
   const resetUrlModal = () => {
     setUrlInput('');
     setUrlSubmissionStatus({ type: null, message: '' });
+    setAnalysisResults(null);
     setIsSubmittingUrl(false);
   };
 
@@ -707,7 +739,7 @@ export default function ContentScreen() {
 
             <View style={styles.actionSection}>
               <AccessibleButton
-                title={isSubmittingUrl ? "Submitting..." : "Submit for Analysis"}
+                title={isSubmittingUrl ? "Analyzing..." : "Submit for Analysis"}
                 variant="primary"
                 onPress={submitUrlForAnalysis}
                 disabled={isSubmittingUrl || !urlInput.trim()}
@@ -724,6 +756,26 @@ export default function ContentScreen() {
                 </View>
               )}
             </View>
+
+            {/* Analysis Results */}
+            {analysisResults && analysisResults.fact_check_results && analysisResults.fact_check_results.results && (
+              <View style={styles.resultsSection}>
+                {console.log('🔍 Rendering FactCheckResults with:', {
+                  url: urlInput,
+                  analysisResults,
+                  claimsLength: analysisResults.fact_check_results.results.length
+                })}
+                <FactCheckResults
+                  url={urlInput}
+                  analysisResult={{
+                    claims: analysisResults.fact_check_results.results.map(result => ({
+                      claim_text: result.text,
+                      score: result.score
+                    }))
+                  }}
+                />
+              </View>
+            )}
           </ScrollView>
         </View>
       </Modal>
@@ -980,5 +1032,12 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  // Results section
+  resultsSection: {
+    marginTop: Spacing.xl,
+    paddingTop: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
   },
 });

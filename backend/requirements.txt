@@ -10,3 +10,20 @@ tqdm
 pillow
 tensorflow
 mtcnn
+pydantic
+pydantic[email]
+python-jose[cryptography]
+PyJWT
+bcrypt
+python-multipart
+
+# Existing dependencies
+requests
+opencv-python
+pytesseract
+SpeechRecognition
+moviepy
+tiktok-downloader
+yt-dlp
+transformers
+torch

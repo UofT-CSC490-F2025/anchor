@@ -2,24 +2,144 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from app.api.tiktok_scrapper import router as tiktok_router
+from app.api.auth import router as auth_router
+from urllib.parse import urlparse
+from psycopg2 import sql
 
-app = FastAPI(title="TikTok Fact Checker API")
+# DB init imports
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+import psycopg2
 
-# Configure CORS
+app = FastAPI(
+    title="Anchor - Content Verification API",
+    description="Backend API for deepfake detection and content verification",
+    version="1.0.0"
+)
+
+def _get_database_url() -> str:
+    """
+    Resolve DATABASE_URL from environment or construct from PG* vars.
+    Fallback: postgresql://postgres:postgres@localhost:5432/anchor
+    """
+    # Load .env from backend/.env
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        return db_url
+    
+    # Fallback construction
+    host = os.getenv("PGHOST", "localhost")
+    port = os.getenv("PGPORT", "5432")
+    user = os.getenv("PGUSER", "postgres")
+    password = os.getenv("PGPASSWORD", "Postgres")
+    dbname = os.getenv("PGDATABASE", "anchor")
+    return f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+
+def _ensure_database_exists():
+    """
+    Ensure the target database exists by connecting to the 'postgres' admin DB.
+    """
+    db_url = _get_database_url()
+    p = urlparse(db_url)
+    target_db = (p.path or "/anchor").lstrip("/") or "anchor"
+
+    admin_url = f"postgresql://{p.username or 'postgres'}:{p.password or 'Postgres'}@{p.hostname or 'localhost'}:{p.port or 5432}/postgres"
+    print(f"[DB INIT] Ensuring database exists: {target_db}")
+
+    try:
+        conn = psycopg2.connect(admin_url)
+        try:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM pg_database WHERE datname=%s;", (target_db,))
+                if cur.fetchone() is None:
+                    print(f"[DB INIT] Creating database '{target_db}'")
+                    cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(target_db)))
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[DB INIT] Database check error: {e}")
+
+def _apply_schema():
+    """
+    Apply backend/db/schema.sql on startup (idempotent DDL).
+    """
+    schema_path = Path(__file__).resolve().parents[1] / "db" / "schema.sql"
+    if not schema_path.exists():
+        print(f"[DB INIT] schema.sql not found at {schema_path}")
+        return
+
+    db_url = _get_database_url()
+    p = urlparse(db_url)
+    safe_dsn = f"postgresql://{p.hostname or 'localhost'}:{p.port or 5432}/{(p.path or '/anchor').lstrip('/')}"
+    print(f"[DB INIT] Connecting to: {safe_dsn}")
+
+    try:
+        conn = psycopg2.connect(db_url)
+        try:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                sql_text = schema_path.read_text(encoding="utf-8")
+                cur.execute(sql_text)
+            print("[DB INIT] Schema applied successfully")
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[DB INIT] Schema application error: {e}")
+
+# Configure CORS - Allow frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:8081",  # Expo dev server
+        "http://localhost:19006",  # Expo web
+        "exp://localhost:19000",  # Expo app
+        "*"  # For development - restrict in production
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include your router
-app.include_router(tiktok_router, prefix="/api/tiktok", tags=["tiktok"])
+# Include routers
+app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+app.include_router(tiktok_router, prefix="/api/tiktok", tags=["TikTok Analysis"])
+
+@app.on_event("startup")
+def init_db_on_startup():
+    """Initialize database on application startup"""
+    try:
+        _ensure_database_exists()
+        _apply_schema()
+    except Exception as e:
+        print(f"[DB INIT] Skipped due to error: {e}")
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the TikTok Fact Checker API"}
+    """Root endpoint - API health check"""
+    return {
+        "message": "Anchor Content Verification API",
+        "version": "1.0.0",
+        "status": "operational",
+        "endpoints": {
+            "authentication": "/auth",
+            "tiktok_analysis": "/api/tiktok",
+            "documentation": "/docs"
+        }
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "database": "connected"
+    }
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

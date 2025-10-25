@@ -6,7 +6,7 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { mockAuthAPI } from '@/services/mockAuthService';
+import * as AuthAPI from '../services/authService';
 import type { User, UUID } from '@/types/database';
 
 // Auth State Interface
@@ -149,8 +149,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const user = JSON.parse(userData) as User;
         
         // Check if tokens are expired
-        const isTokenValid = await mockAuthAPI.validateToken(tokenExpiry);
-        const isRefreshValid = await mockAuthAPI.validateToken(refreshExpiry);
+        const isTokenValid = await AuthAPI.validateToken(tokenExpiry);
+        const isRefreshValid = await AuthAPI.validateToken(refreshExpiry);
         
         if (isTokenValid) {
           // Token is still valid, restore session
@@ -167,7 +167,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } else if (isRefreshValid) {
           // Access token expired, but refresh token is valid - try to refresh
           try {
-            const refreshResponse = await mockAuthAPI.refreshToken(refreshToken);
+            const refreshResponse = await AuthAPI.refreshToken(refreshToken);
             if (refreshResponse.success && refreshResponse.user && refreshResponse.token) {
               // Store new tokens
               await Promise.all([
@@ -213,7 +213,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       dispatch({ type: 'AUTH_LOADING', payload: true });
 
       // Use mock authentication service instead of API call
-      const mockResponse = await mockAuthAPI.login(email, password);
+      const mockResponse = await AuthAPI.login(email, password);
 
       if (!mockResponse.success) {
         throw new Error(mockResponse.error || 'Login failed');
@@ -250,7 +250,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       dispatch({ type: 'AUTH_LOADING', payload: true });
 
       // Use mock authentication service for signup
-      const mockResponse = await mockAuthAPI.signup(email, password, firstName, lastName);
+      const mockResponse = await AuthAPI.signup(email, password, firstName, lastName);
 
       if (!mockResponse.success) {
         throw new Error(mockResponse.error || 'Signup failed');
@@ -287,7 +287,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       dispatch({ type: 'AUTH_LOADING', payload: true });
 
       // Use mock OAuth authentication service
-      const mockResponse = await mockAuthAPI.oauthLogin(provider);
+      const mockResponse = await AuthAPI.oauthLogin(provider);
 
       if (!mockResponse.success) {
         throw new Error(mockResponse.error || 'OAuth login failed');
@@ -337,7 +337,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (!token) return false;
 
       // Use mock auth service to refresh token
-      const mockResponse = await mockAuthAPI.refreshToken(token);
+      const mockResponse = await AuthAPI.refreshToken(token);
 
       if (!mockResponse.success || !mockResponse.user || !mockResponse.token) {
         throw new Error(mockResponse.error || 'Token refresh failed');

@@ -1,12 +1,13 @@
 /**
- * API Services Hook
- * Provides authenticated API services with user context
+ * API Services Hook with Flexible Mocking
+ * Provides authenticated API services with selective mock/real endpoint control
  */
 
 import { useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { createContentService } from '@/services/contentService';
 import { createUserService } from '@/services/userService';
+import { createFlexibleContentService } from '@/services/flexibleContentService';
 
 export function useApiServices() {
   const { accessToken, isAuthenticated } = useAuth();
@@ -16,6 +17,7 @@ export function useApiServices() {
       return {
         contentService: null,
         userService: null,
+        flexibleContentService: null,
         isReady: false,
       };
     }
@@ -23,6 +25,7 @@ export function useApiServices() {
     return {
       contentService: createContentService(accessToken),
       userService: createUserService(accessToken),
+      flexibleContentService: createFlexibleContentService(accessToken), // New flexible service
       isReady: true,
     };
   }, [isAuthenticated, accessToken || null]);
@@ -39,6 +42,17 @@ export function useContentService() {
   }
   
   return contentService;
+}
+
+export function useFlexibleContentService() {
+  const { flexibleContentService, isReady } = useApiServices();
+  
+  // Return null instead of throwing to allow conditional usage
+  if (!isReady || !flexibleContentService) {
+    return null;
+  }
+  
+  return flexibleContentService;
 }
 
 export function useUserService() {

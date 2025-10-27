@@ -3,10 +3,10 @@ Example usage of the cloud-enabled ETL pipeline for deepfake datasets.
 """
 
 import logging
-from etl.pipeline import ETLPipeline
-from etl.importers import import_faceforensicspp, import_celebdfpp
-from etl.transformers import extract_frames, default_transformer
-from etl.loaders import save_to_disk, default_loader
+from .pipeline import ETLPipeline
+from .importers import import_faceforensicspp, import_celebdfpp
+from .transformers import extract_frames, default_transformer
+from .loaders import save_to_disk, default_loader
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

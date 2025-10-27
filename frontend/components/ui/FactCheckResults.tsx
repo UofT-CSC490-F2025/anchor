@@ -9,24 +9,21 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 import { AccessibleText, AccessibleCard } from '@/components/ui/AccessibleComponents';
 import { Colors, Spacing, BorderRadius } from '@/constants/theme';
-
-interface Claim {
-  claim_text: string;
-  score: number;
-}
-
-interface AnalysisResult {
-  claims: Claim[];
-}
+import type { TikTokPredictResponse } from '@/types/tiktokAnalysis';
 
 interface FactCheckResultsProps {
   url?: string;
-  analysisResult: AnalysisResult;
+  analysisResponse: TikTokPredictResponse;
 }
 
-export function FactCheckResults({ url, analysisResult }: FactCheckResultsProps) {
+export function FactCheckResults({ url, analysisResponse }: FactCheckResultsProps) {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
+
+  // Extract claims from the backend response
+  const claims = analysisResponse.fact_check_results.claims || [];
+  const status = analysisResponse.fact_check_results.status;
+  const message = analysisResponse.fact_check_results.message;
 
   const getScoreColor = (score: number): string => {
     if (score >= 0.6) return theme.success;   // High factuality (green)
@@ -79,14 +76,39 @@ export function FactCheckResults({ url, analysisResult }: FactCheckResultsProps)
         </AccessibleText>
       )}
 
+      {/* Analysis Status */}
+      <View style={styles.section}>
+        <AccessibleText variant="label" style={sectionTitleStyles}>
+          Analysis Status
+        </AccessibleText>
+        <AccessibleText 
+          style={{
+            ...styles.statusText,
+            color: status === 'completed' ? theme.success : status === 'failed' ? theme.error : theme.warning,
+          }}
+        >
+          {status === 'completed' ? '✅ Complete' : status === 'failed' ? '❌ Failed' : '⏳ In Progress'}
+        </AccessibleText>
+        {message && (
+          <AccessibleText 
+            style={{
+              ...styles.messageText,
+              color: theme.textSecondary,
+            }}
+          >
+            {message}
+          </AccessibleText>
+        )}
+      </View>
+
       {/* Claims Section */}
-      {analysisResult.claims && analysisResult.claims.length > 0 && (
+      {claims && claims.length > 0 && (
         <View style={styles.section}>
           <AccessibleText variant="label" style={sectionTitleStyles}>
-            Claims Detected
+            Claims Detected ({claims.length})
           </AccessibleText>
           
-          {analysisResult.claims.map((claim, index) => (
+          {claims.map((claim, index) => (
             <View key={index} style={styles.claimItem}>
               <AccessibleText 
                 style={{
@@ -94,7 +116,15 @@ export function FactCheckResults({ url, analysisResult }: FactCheckResultsProps)
                   color: theme.text,
                 }}
               >
-                "{claim.claim_text}"
+                "{claim.text}"
+              </AccessibleText>
+              <AccessibleText 
+                style={{
+                  ...styles.claimIndex,
+                  color: theme.textTertiary,
+                }}
+              >
+                Claim #{claim.index + 1}
               </AccessibleText>
             </View>
           ))}
@@ -102,74 +132,93 @@ export function FactCheckResults({ url, analysisResult }: FactCheckResultsProps)
       )}
 
       {/* Scores Section */}
-      <View style={styles.section}>
-        <AccessibleText variant="label" style={sectionTitleStyles}>
-          Factuality Assessment
-        </AccessibleText>
-        
-        <View style={styles.scoresContainer}>
-          {analysisResult.claims.map((claim, index) => {
-            const scoreColor = getScoreColor(claim.score);
-            const interpretation = getScoreInterpretation(claim.score);
-            
-            return (
-              <View key={index} style={styles.scoreItem}>
-                <View style={styles.scoreHeader}>
-                  <View 
-                    style={{
-                      ...styles.scoreIndicator,
-                      backgroundColor: scoreColor,
-                    }}
-                    accessibilityLabel={`Factuality score: ${Math.round(claim.score * 100)}%`}
-                  />
-                  <View style={styles.scoreContent}>
-                    <AccessibleText 
-                      variant="label" 
+      {claims && claims.length > 0 && (
+        <View style={styles.section}>
+          <AccessibleText variant="label" style={sectionTitleStyles}>
+            Factuality Assessment
+          </AccessibleText>
+          
+          <View style={styles.scoresContainer}>
+            {claims.map((claim, index) => {
+              const scoreColor = getScoreColor(claim.score);
+              const interpretation = getScoreInterpretation(claim.score);
+              
+              return (
+                <View key={index} style={styles.scoreItem}>
+                  <View style={styles.scoreHeader}>
+                    <View 
                       style={{
-                        ...styles.scoreText,
-                        color: scoreColor,
+                        ...styles.scoreIndicator,
+                        backgroundColor: scoreColor,
                       }}
-                    >
-                      {interpretation.level}
-                    </AccessibleText>
-                    <AccessibleText 
-                      variant="caption" 
-                      style={{
-                        ...styles.indexText,
-                        color: theme.textTertiary,
-                      }}
-                    >
-                      Score: {Math.round(claim.score * 100)}%
-                    </AccessibleText>
+                      accessibilityLabel={`Factuality score: ${Math.round(claim.score * 100)}%`}
+                    />
+                    <View style={styles.scoreContent}>
+                      <AccessibleText 
+                        variant="label" 
+                        style={{
+                          ...styles.scoreText,
+                          color: scoreColor,
+                        }}
+                      >
+                        {interpretation.level}
+                      </AccessibleText>
+                      <AccessibleText 
+                        variant="caption" 
+                        style={{
+                          ...styles.indexText,
+                          color: theme.textTertiary,
+                        }}
+                      >
+                        Score: {Math.round(claim.score * 100)}%
+                      </AccessibleText>
+                    </View>
                   </View>
-                </View>
-                
-                <AccessibleText 
-                  variant="body" 
-                  style={{
-                    ...styles.scoreDescription,
-                    color: theme.textSecondary,
-                  }}
-                >
-                  {interpretation.description}
-                </AccessibleText>
-                
-                <View style={styles.relatedClaim}>
+                  
                   <AccessibleText 
-                    variant="caption" 
+                    variant="body" 
                     style={{
-                      ...styles.resultText,
+                      ...styles.scoreDescription,
                       color: theme.textSecondary,
                     }}
                   >
-                    Related: "{claim.claim_text}"
+                    {interpretation.description}
                   </AccessibleText>
+                  
+                  <View style={styles.relatedClaim}>
+                    <AccessibleText 
+                      variant="caption" 
+                      style={{
+                        ...styles.resultText,
+                        color: theme.textSecondary,
+                      }}
+                    >
+                      Related: "{claim.text}"
+                    </AccessibleText>
+                  </View>
                 </View>
-              </View>
-            );
-          })}
+              );
+            })}
+          </View>
         </View>
-      </View>
+      )}
+
+      {/* No Claims Found */}
+      {claims.length === 0 && status === 'completed' && (
+        <View style={styles.section}>
+          <AccessibleText variant="label" style={sectionTitleStyles}>
+            Analysis Result
+          </AccessibleText>
+          <AccessibleText 
+            style={{
+              ...styles.noClaimsText,
+              color: theme.textSecondary,
+            }}
+          >
+            No specific factual claims were detected in this content. The material may be primarily entertainment, personal expression, or non-factual content.
+          </AccessibleText>
+        </View>
+      )}
 
       {/* Disclaimer */}
       <View style={styles.disclaimerContainer}>
@@ -280,5 +329,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     textAlign: 'center',
+  },
+  statusText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: Spacing.sm,
+  },
+  messageText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+  claimIndex: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: Spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  noClaimsText: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontStyle: 'italic',
+    padding: Spacing.md,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+    borderRadius: BorderRadius.md,
   },
 });

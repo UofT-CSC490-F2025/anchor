@@ -24,6 +24,8 @@ import { useApiServices, useFlexibleContentService } from '@/hooks/useApiService
 import { Colors, Spacing, BorderRadius, Elevation } from '@/constants/theme';
 import { validateTikTokUrl, getExampleUrls } from '@/utils/urlValidation';
 import type { FlaggedContent, ContentType } from '@/types';
+import type { TikTokPredictResponse } from '@/types/tiktokAnalysis';
+import { getAnalysisStatusMessage, isAnalysisSuccessful } from '@/types/tiktokAnalysis';
 
 export default function ContentScreen() {
   const [flaggedContent, setFlaggedContent] = useState<FlaggedContent[]>([]);
@@ -42,18 +44,7 @@ export default function ContentScreen() {
     type: 'success' | 'error' | null;
     message: string;
   }>({ type: null, message: '' });
-  const [analysisResults, setAnalysisResults] = useState<{
-    file_name: string;
-    fact_check_results: {
-      version: string;
-      claim: string;
-      results: Array<{
-        text: string;
-        index: number;
-        score: number;
-      }>;
-    };
-  } | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<TikTokPredictResponse | null>(null);
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -62,8 +53,9 @@ export default function ContentScreen() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   
   // Get API services (will return null services if not authenticated)
-  const { contentService, isReady } = useApiServices();
+  const { isReady } = useApiServices();
   const flexibleContentService = useFlexibleContentService();
+  const contentService = flexibleContentService; // Use flexible service for all content operations
 
   const filterOptions = useMemo(() => [
     { value: 'all' as const, label: 'All Types', count: flaggedContent?.length || 0 },
@@ -212,17 +204,16 @@ export default function ContentScreen() {
       console.log('✅ Analysis result:', result);
       
       // Validate the response structure before setting it
-      if (result && result.fact_check_results && result.fact_check_results.results && Array.isArray(result.fact_check_results.results)) {
+      if (result && result.fact_check_results) {
         // Store the results for display
         setAnalysisResults(result);
         
+        // Use the utility function to generate a proper status message
+        const statusMessage = getAnalysisStatusMessage(result);
+        
         setUrlSubmissionStatus({
-          type: 'success',
-          message: `Analysis complete! Claim-worthiness score: ${
-            result.fact_check_results.results[0]?.score 
-              ? Math.round(result.fact_check_results.results[0].score * 100) + '%'
-              : 'N/A'
-          }. See detailed results below.`
+          type: isAnalysisSuccessful(result) ? 'success' : 'error',
+          message: statusMessage
         });
       } else {
         console.error('Invalid response structure:', result);
@@ -758,21 +749,11 @@ export default function ContentScreen() {
             </View>
 
             {/* Analysis Results */}
-            {analysisResults && analysisResults.fact_check_results && analysisResults.fact_check_results.results && (
+            {analysisResults && analysisResults.fact_check_results && (
               <View style={styles.resultsSection}>
-                {console.log('🔍 Rendering FactCheckResults with:', {
-                  url: urlInput,
-                  analysisResults,
-                  claimsLength: analysisResults.fact_check_results.results.length
-                })}
                 <FactCheckResults
                   url={urlInput}
-                  analysisResult={{
-                    claims: analysisResults.fact_check_results.results.map(result => ({
-                      claim_text: result.text,
-                      score: result.score
-                    }))
-                  }}
+                  analysisResponse={analysisResults}
                 />
               </View>
             )}

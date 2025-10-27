@@ -1,7 +1,7 @@
 from typing import Callable, Dict, Any, Optional, List
 import logging
 from .storage_manager import DatasetStorageManager
-from .loaders import load_to_cloud_storage, load_from_s3_to_local
+from .loaders import load_to_cloud_storage
 
 logger = logging.getLogger(__name__)
 

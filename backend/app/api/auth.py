@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 import jwt
 import bcrypt
@@ -8,6 +7,16 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
 import uuid
+
+# Import consolidated models
+from app.models import (
+    LoginRequest,
+    SignupRequest,
+    OAuthRequest,
+    RefreshRequest,
+    UserResponse,
+    AuthResponse,
+)
 
 router = APIRouter()
 security = HTTPBearer()
@@ -17,44 +26,6 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
-
-# Pydantic Models matching frontend expectations
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-class SignupRequest(BaseModel):
-    email: EmailStr
-    password: str
-    firstName: str
-    lastName: str
-
-class OAuthRequest(BaseModel):
-    provider: str  # 'google', 'facebook', 'twitter'
-    accessToken: str
-
-class RefreshRequest(BaseModel):
-    refreshToken: str
-
-class UserResponse(BaseModel):
-    id: str
-    email: str
-    display_name: str
-    created_at: str
-    updated_at: str
-    is_active: bool
-    locale: str
-    metadata: dict
-
-class AuthResponse(BaseModel):
-    success: bool
-    user: UserResponse | None = None
-    token: str | None = None
-    refreshToken: str | None = None
-    tokenExpiresAt: str | None = None
-    refreshTokenExpiresAt: str | None = None
-    isNewUser: bool = False
-    error: str | None = None
 
 # Database connection helper
 def get_db_conn():

@@ -158,7 +158,7 @@ export const CONFIG = {
     ENABLE_FLIPPER: __DEV__,
     ENABLE_LOGS: __DEV__,
     ENABLE_REDUX_DEVTOOLS: __DEV__,
-    MOCK_API: __DEV__,
+    MOCK_API: __DEV__, // Enable selective mocking for endpoints that don't exist
   },
 } as const;
 

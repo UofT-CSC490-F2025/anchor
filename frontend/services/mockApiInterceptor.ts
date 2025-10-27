@@ -484,6 +484,63 @@ const mockResponses: Record<string, (url: string, options?: RequestInit) => Prom
     };
   },
 
+  // Auth endpoints (these won't be used since MOCK_API is disabled, but kept for completeness)
+  'POST /auth/signup': async (_url, options) => {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const body = options?.body ? JSON.parse(options.body as string) : {};
+    const userData = {
+      id: generateMockUUID(),
+      email: body.email || 'newuser@example.com',
+      display_name: `${body.firstName || 'New'} ${body.lastName || 'User'}`,
+      created_at: STABLE_TIMESTAMP,
+      updated_at: STABLE_TIMESTAMP,
+      is_active: true,
+      locale: 'en',
+      metadata: {}
+    };
+    return {
+      success: true,
+      data: userData,
+      timestamp: STABLE_TIMESTAMP,
+      user_id: userData.id,
+      // Auth-specific fields
+      user: userData,
+      token: 'mock-jwt-token',
+      refreshToken: 'mock-refresh-token',
+      tokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      isNewUser: true
+    } as any;
+  },
+
+  'POST /auth/login': async (_url, options) => {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const body = options?.body ? JSON.parse(options.body as string) : {};
+    const userData = {
+      id: 'mock-user-id',
+      email: body.email || 'test@example.com',
+      display_name: 'Mock User',
+      created_at: STABLE_TIMESTAMP,
+      updated_at: STABLE_TIMESTAMP,
+      is_active: true,
+      locale: 'en',
+      metadata: {}
+    };
+    return {
+      success: true,
+      data: userData,
+      timestamp: STABLE_TIMESTAMP,
+      user_id: userData.id,
+      // Auth-specific fields
+      user: userData,
+      token: 'mock-jwt-token',
+      refreshToken: 'mock-refresh-token',
+      tokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      isNewUser: false
+    } as any;
+  },
+
   'GET /users/dashboard/summary': async () => ({
     success: true,
     data: {
@@ -558,6 +615,49 @@ export class MockApiInterceptor {
   }
 
   /**
+   * Check if an endpoint should be mocked based on apiConfig
+   */
+  private shouldMockEndpoint(url: string, method: string): boolean {
+    // Import here to avoid circular imports
+    const { shouldUseMock } = require('@/config/apiConfig');
+    
+    try {
+      const urlObj = new URL(url);
+      const path = urlObj.pathname;
+      
+      // Map backend paths to frontend endpoint paths
+      if (path.startsWith('/auth/')) {
+        const authEndpoint = path.replace('/auth/', '');
+        switch (authEndpoint) {
+          case 'login': return shouldUseMock('auth.login');
+          case 'signup': return shouldUseMock('auth.register');
+          case 'refresh': return shouldUseMock('auth.refreshToken');
+          case 'logout': return shouldUseMock('auth.logout');
+          default: return true; // Mock unknown auth endpoints
+        }
+      }
+      
+      if (path.startsWith('/api/tiktok/predict')) {
+        return shouldUseMock('content.analyzeUrl');
+      }
+      
+      if (path.startsWith('/users/videos/flagged') || path.startsWith('/users/flagged')) {
+        return shouldUseMock('content.getFlaggedContent');
+      }
+      
+      if (path.startsWith('/users/analytics')) {
+        return shouldUseMock('content.getAnalytics');
+      }
+      
+      // Default to mocking for unknown endpoints
+      return true;
+    } catch {
+      // If URL parsing fails, default to mocking
+      return true;
+    }
+  }
+
+  /**
    * Mock fetch implementation
    */
   private async mockFetch(
@@ -568,7 +668,16 @@ export class MockApiInterceptor {
     const method = init?.method || 'GET';
     const endpoint = this.extractEndpoint(url, method);
 
-    // Track request frequency
+    // Check if this endpoint should be mocked
+    if (!this.shouldMockEndpoint(url, method)) {
+      if (CONFIG.DEV.ENABLE_LOGS) {
+        console.log(`🚀 Using REAL API for ${endpoint} (not configured for mocking)`);
+      }
+      // Call the original fetch for real API calls
+      return this.originalFetch(input, init);
+    }
+
+    // Track request frequency for mocked calls only
     const currentTime = Date.now();
     const lastTime = this.lastRequestTime.get(endpoint) || 0;
     const timeDiff = currentTime - lastTime;

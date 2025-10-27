@@ -5,6 +5,9 @@ import speech_recognition as sr
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from transformers import pipeline
 
+# Import consolidated models
+from app.models import TikTokPredictRequest, TikTokPredictResponse, DeepfakeCheckResult, FactCheckResult
+
 router = APIRouter()
 dotenv.load_dotenv()
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\Hardik\OneDrive - University of Toronto\4th Year\CSC490\lib\tesseract.exe'  # Update this path as needed
@@ -14,8 +17,8 @@ except Exception as e:
     print(f"Warning: Could not load summarization model: {e}")
     summarization_pipeline = None
 
-@router.post("/predict")
-async def predict_tiktok_videos(url: str):#, current_user: dict = Depends(get_current_user)):
+@router.post("/predict", response_model=TikTokPredictResponse)
+async def predict_tiktok_videos(request: TikTokPredictRequest):#, current_user: dict = Depends(get_current_user)):
     """
     Predict TikTok videos from a given URL.
     """
@@ -27,7 +30,7 @@ async def predict_tiktok_videos(url: str):#, current_user: dict = Depends(get_cu
     #     )
     
     # Placeholder for actual scraping logic
-    file_path, file_name = _scrape_tiktok_videos(url)
+    file_path, file_name = _scrape_tiktok_videos(str(request.url))
     print(f"Scraped file path: {file_path}, file name: {file_name}")
     if not file_path:
         raise HTTPException(
@@ -81,19 +84,30 @@ async def predict_tiktok_videos(url: str):#, current_user: dict = Depends(get_cu
         )
 
     # check_deepfake = _deepware_api_check(file_path)
+    deepfake_check = DeepfakeCheckResult(
+        status="not_implemented", 
+        message="Deepfake detection not yet implemented"
+    )
 
     # Fact-check the extracted text
-    fact_check_results = _claim_buster_api_check(ocr_summary)
-    if fact_check_results is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to perform fact-checking.",
+    claim_buster_results = _claim_buster_api_check(ocr_summary)
+    if claim_buster_results is None:
+        fact_check_results = FactCheckResult(
+            status="failed", 
+            message="Failed to perform fact-checking"
         )
-    return {
-        "file_name": file_name,
-        "deepfake_check": check_deepfake,
-        "fact_check_results": fact_check_results
-    }
+    else:
+        fact_check_results = FactCheckResult(
+            status="completed",
+            claims=claim_buster_results.get("claims", []),
+            message="Fact-checking completed successfully"
+        )
+
+    return TikTokPredictResponse(
+        file_name=file_name,
+        deepfake_check=deepfake_check,
+        fact_check_results=fact_check_results
+    )
 
 def _scrape_tiktok_videos(url: str):
     # Placeholder for actual TikTok scraping logic

@@ -1,7 +1,7 @@
 /**
- * Configuration Index
- * Central export for all configuration files
+ * Config barrel exports
+ * Re-exports all configuration modules for easy importing
  */
 
 export * from './app';
-export * from './theme';
+export * 

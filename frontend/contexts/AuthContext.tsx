@@ -6,7 +6,7 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import * as AuthAPI from '../services/authService';
+import { flexibleAuthService, type AuthResponse, type AuthUser } from '../services/flexibleAuthService';
 import type { User, UUID } from '@/types/database';
 
 // Auth State Interface
@@ -149,8 +149,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const user = JSON.parse(userData) as User;
         
         // Check if tokens are expired
-        const isTokenValid = await AuthAPI.validateToken(tokenExpiry);
-        const isRefreshValid = await AuthAPI.validateToken(refreshExpiry);
+        const now = new Date().getTime();
+        const tokenExpiryTime = new Date(tokenExpiry).getTime();
+        const refreshExpiryTime = new Date(refreshExpiry).getTime();
+        const isTokenValid = now < tokenExpiryTime;
+        const isRefreshValid = now < refreshExpiryTime;
         
         if (isTokenValid) {
           // Token is still valid, restore session
@@ -163,11 +166,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
               isNewSignup: false, // This is a session restore, not a new signup
             },
           });
+          // Ensure the flexible auth service uses the restored token for future requests
+          try {
+            flexibleAuthService.setAuthToken(accessToken);
+          } catch (e) {
+            // Non-fatal
+            console.warn('Failed to set auth token on service during init', e);
+          }
           return;
         } else if (isRefreshValid) {
           // Access token expired, but refresh token is valid - try to refresh
           try {
-            const refreshResponse = await AuthAPI.refreshToken(refreshToken);
+            const refreshResponse = await flexibleAuthService.refreshToken(refreshToken);
             if (refreshResponse.success && refreshResponse.user && refreshResponse.token) {
               // Store new tokens
               await Promise.all([
@@ -187,6 +197,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
                   isNewSignup: false, // This is a token refresh, not a new signup
                 },
               });
+                // Ensure service has updated token
+                try {
+                  flexibleAuthService.setAuthToken(refreshResponse.token);
+                } catch (e) {
+                  console.warn('Failed to set auth token on service after refresh', e);
+                }
               return;
             }
           } catch (error) {
@@ -213,30 +229,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
       dispatch({ type: 'AUTH_LOADING', payload: true });
 
       // Use mock authentication service instead of API call
-      const mockResponse = await AuthAPI.login(email, password);
+      const response = await flexibleAuthService.login(email, password);
 
-      if (!mockResponse.success) {
-        throw new Error(mockResponse.error || 'Login failed');
+      if (!response.success) {
+        throw new Error(response.error || 'Login failed');
       }
 
-      if (mockResponse.user && mockResponse.token) {
+      if (response.user && response.token) {
         await Promise.all([
-          AsyncStorage.setItem(ACCESS_TOKEN_KEY, mockResponse.token),
-          AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(mockResponse.user)),
-          AsyncStorage.setItem(REFRESH_TOKEN_KEY, mockResponse.refreshToken || ''),
-          AsyncStorage.setItem(TOKEN_EXPIRY_KEY, mockResponse.tokenExpiresAt || ''),
-          AsyncStorage.setItem(REFRESH_EXPIRY_KEY, mockResponse.refreshTokenExpiresAt || ''),
+          AsyncStorage.setItem(ACCESS_TOKEN_KEY, response.token),
+          AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(response.user)),
+          AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.refreshToken || ''),
+          AsyncStorage.setItem(TOKEN_EXPIRY_KEY, response.tokenExpiresAt || ''),
+          AsyncStorage.setItem(REFRESH_EXPIRY_KEY, response.refreshTokenExpiresAt || ''),
         ]);
 
         dispatch({
           type: 'AUTH_SUCCESS',
           payload: {
-            user: mockResponse.user,
-            accessToken: mockResponse.token,
-            refreshToken: mockResponse.refreshToken || '',
+            user: response.user,
+            accessToken: response.token,
+            refreshToken: response.refreshToken || '',
             isNewSignup: false, // This is a login, not a new signup
           },
         });
+        // Make sure the flexible auth service has the token for subsequent requests
+        try {
+          flexibleAuthService.setAuthToken(response.token);
+        } catch (e) {
+          console.warn('Failed to set auth token on service after login', e);
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Login failed';
@@ -249,31 +271,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       dispatch({ type: 'AUTH_LOADING', payload: true });
 
-      // Use mock authentication service for signup
-      const mockResponse = await AuthAPI.signup(email, password, firstName, lastName);
+      // Use flexible authentication service for signup
+      const response = await flexibleAuthService.signup(email, password, firstName, lastName);
 
-      if (!mockResponse.success) {
-        throw new Error(mockResponse.error || 'Signup failed');
+      if (!response.success) {
+        throw new Error(response.error || 'Signup failed');
       }
 
-      if (mockResponse.user && mockResponse.token) {
+      if (response.user && response.token) {
         await Promise.all([
-          AsyncStorage.setItem(ACCESS_TOKEN_KEY, mockResponse.token),
-          AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(mockResponse.user)),
-          AsyncStorage.setItem(REFRESH_TOKEN_KEY, mockResponse.refreshToken || ''),
-          AsyncStorage.setItem(TOKEN_EXPIRY_KEY, mockResponse.tokenExpiresAt || ''),
-          AsyncStorage.setItem(REFRESH_EXPIRY_KEY, mockResponse.refreshTokenExpiresAt || ''),
+          AsyncStorage.setItem(ACCESS_TOKEN_KEY, response.token),
+          AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(response.user)),
+          AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.refreshToken || ''),
+          AsyncStorage.setItem(TOKEN_EXPIRY_KEY, response.tokenExpiresAt || ''),
+          AsyncStorage.setItem(REFRESH_EXPIRY_KEY, response.refreshTokenExpiresAt || ''),
         ]);
 
         dispatch({
           type: 'AUTH_SUCCESS',
           payload: {
-            user: mockResponse.user,
-            accessToken: mockResponse.token,
-            refreshToken: mockResponse.refreshToken || '',
+            user: response.user,
+            accessToken: response.token,
+            refreshToken: response.refreshToken || '',
             isNewSignup: true, // This is a signup, so it's a new user
           },
         });
+        try {
+          flexibleAuthService.setAuthToken(response.token);
+        } catch (e) {
+          console.warn('Failed to set auth token on service after signup', e);
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Signup failed';
@@ -286,31 +313,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       dispatch({ type: 'AUTH_LOADING', payload: true });
 
-      // Use mock OAuth authentication service
-      const mockResponse = await AuthAPI.oauthLogin(provider);
+      // Use flexible OAuth authentication service
+      const response = await flexibleAuthService.oauthLogin(provider, _token);
 
-      if (!mockResponse.success) {
-        throw new Error(mockResponse.error || 'OAuth login failed');
+      if (!response.success) {
+        throw new Error(response.error || 'OAuth login failed');
       }
 
-      if (mockResponse.user && mockResponse.token) {
+      if (response.user && response.token) {
         await Promise.all([
-          AsyncStorage.setItem(ACCESS_TOKEN_KEY, mockResponse.token),
-          AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(mockResponse.user)),
-          AsyncStorage.setItem(REFRESH_TOKEN_KEY, mockResponse.refreshToken || ''),
-          AsyncStorage.setItem(TOKEN_EXPIRY_KEY, mockResponse.tokenExpiresAt || ''),
-          AsyncStorage.setItem(REFRESH_EXPIRY_KEY, mockResponse.refreshTokenExpiresAt || ''),
+          AsyncStorage.setItem(ACCESS_TOKEN_KEY, response.token),
+          AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(response.user)),
+          AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.refreshToken || ''),
+          AsyncStorage.setItem(TOKEN_EXPIRY_KEY, response.tokenExpiresAt || ''),
+          AsyncStorage.setItem(REFRESH_EXPIRY_KEY, response.refreshTokenExpiresAt || ''),
         ]);
 
         dispatch({
           type: 'AUTH_SUCCESS',
           payload: {
-            user: mockResponse.user,
-            accessToken: mockResponse.token,
-            refreshToken: mockResponse.refreshToken || '',
-            isNewSignup: mockResponse.isNewUser || false, // Use OAuth response to determine if new user
+            user: response.user,
+            accessToken: response.token,
+            refreshToken: response.refreshToken || '',
+            isNewSignup: response.isNewUser || false, // Use OAuth response to determine if new user
           },
         });
+        try {
+          flexibleAuthService.setAuthToken(response.token);
+        } catch (e) {
+          console.warn('Failed to set auth token on service after oauth login', e);
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'OAuth login failed';
@@ -321,12 +353,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const logout = async () => {
     try {
+      // Try to notify backend about logout, ignore errors
+      try {
+        await flexibleAuthService.logout(state.accessToken || '');
+      } catch (e) {
+        // Non-fatal - proceed to clear local state
+        console.warn('Backend logout failed (continuing to clear local state)', e);
+      }
+
       // Clear all stored authentication data
       await clearAuthStorage();
+      flexibleAuthService.setAuthToken('');
       dispatch({ type: 'AUTH_LOGOUT' });
     } catch (error) {
       console.error('Logout failed:', error);
       // Still try to clear state even if storage clear fails
+      flexibleAuthService.setAuthToken('');
       dispatch({ type: 'AUTH_LOGOUT' });
     }
   };
@@ -336,25 +378,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const token = refreshToken || state.refreshToken;
       if (!token) return false;
 
-      // Use mock auth service to refresh token
-      const mockResponse = await AuthAPI.refreshToken(token);
+      // Use flexible auth service to refresh token
+      const response = await flexibleAuthService.refreshToken(token);
 
-      if (!mockResponse.success || !mockResponse.user || !mockResponse.token) {
-        throw new Error(mockResponse.error || 'Token refresh failed');
+      if (!response.success || !response.user || !response.token) {
+        throw new Error(response.error || 'Token refresh failed');
       }
 
-      await AsyncStorage.setItem(ACCESS_TOKEN_KEY, mockResponse.token);
-      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(mockResponse.user));
-      if (mockResponse.refreshToken) {
-        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, mockResponse.refreshToken);
+      await AsyncStorage.setItem(ACCESS_TOKEN_KEY, response.token);
+      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(response.user));
+      if (response.refreshToken) {
+        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, response.refreshToken);
       }
       
       dispatch({
         type: 'AUTH_SUCCESS',
         payload: {
-          user: mockResponse.user,
-          accessToken: mockResponse.token,
-          refreshToken: mockResponse.refreshToken || token,
+          user: response.user,
+          accessToken: response.token,
+          refreshToken: response.refreshToken || token,
           isNewSignup: false, // This is a token refresh, not a new signup
         },
       });

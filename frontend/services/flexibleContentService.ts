@@ -20,6 +20,10 @@ import type {
   AnalyticsData, 
   PaginatedResponse
 } from '@/types/api';
+import type { 
+  TikTokPredictResponse,
+  TikTokPredictRequest
+} from '@/types/tiktokAnalysis';
 
 export class FlexibleContentService {
   private apiService: FlexibleApiService;
@@ -36,19 +40,10 @@ export class FlexibleContentService {
    * 🎯 MAIN ENDPOINT: Analyze TikTok URL
    * This will use REAL API when ready, MOCK otherwise
    */
-  async analyzeUrl(url: string): Promise<{
-    file_name: string;
-    fact_check_results: {
-      version: string;
-      claim: string;
-      results: Array<{
-        text: string;
-        index: number;
-        score: number;
-      }>;
-    };
-  }> {
-    return this.apiService.request('content.analyzeUrl', 'POST', { url });
+  async analyzeUrl(url: string): Promise<TikTokPredictResponse> {
+    // The backend expects a JSON payload with 'url' field matching TikTokPredictRequest schema
+    const request: TikTokPredictRequest = { url };
+    return this.apiService.request<TikTokPredictResponse>('content.analyzeUrl', 'POST', request);
   }
 
   /**

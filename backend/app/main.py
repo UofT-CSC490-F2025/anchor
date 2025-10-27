@@ -1,8 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
 from app.api.tiktok_scrapper import router as tiktok_router
 from app.api.auth import router as auth_router
+from app.api.etl import router as etl_router
+from app.models import HealthCheckResponse, ApiResponse
 from urllib.parse import urlparse
 from psycopg2 import sql
 
@@ -17,6 +20,25 @@ app = FastAPI(
     description="Backend API for deepfake detection and content verification",
     version="1.0.0"
 )
+
+# Middleware to ensure JSON content-type for POST requests
+@app.middleware("http")
+async def ensure_json_content_type(request: Request, call_next):
+    """
+    Middleware to ensure POST, PUT, PATCH requests have application/json content-type
+    """
+    if request.method in ["POST", "PUT", "PATCH"] and request.url.path not in ["/docs", "/openapi.json"]:
+        content_type = request.headers.get("content-type", "")
+        if content_type and not content_type.startswith("application/json"):
+            # Allow multipart/form-data for file uploads if needed
+            if not content_type.startswith("multipart/form-data"):
+                raise HTTPException(
+                    status_code=415,
+                    detail="Content-Type must be application/json for this endpoint"
+                )
+    
+    response = await call_next(request)
+    return response
 
 def _get_database_url() -> str:
     """
@@ -109,6 +131,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(tiktok_router, prefix="/api/tiktok", tags=["TikTok Analysis"])
+app.include_router(etl_router, prefix="/api/etl", tags=["ETL Operations"])
 
 @app.on_event("startup")
 def init_db_on_startup():
@@ -126,20 +149,27 @@ async def root():
         "message": "Anchor Content Verification API",
         "version": "1.0.0",
         "status": "operational",
+        "content_type": "All POST/PUT/PATCH endpoints require application/json content-type",
         "endpoints": {
             "authentication": "/auth",
             "tiktok_analysis": "/api/tiktok",
+            "etl_operations": "/api/etl",
             "documentation": "/docs"
         }
     }
 
-@app.get("/health")
+@app.get("/health", response_model=HealthCheckResponse)
 async def health_check():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "database": "connected"
-    }
+    return HealthCheckResponse(
+        status="healthy",
+        database="connected",
+        services={
+            "auth": "operational",
+            "tiktok_analysis": "operational",
+            "etl": "operational"
+        }
+    )
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

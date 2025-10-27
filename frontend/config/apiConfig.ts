@@ -58,43 +58,43 @@ export interface ApiConfig {
 // Development configuration - easy to toggle individual endpoints
 export const apiConfig: ApiConfig = {
   global: {
-    baseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000/api',
+    baseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000',
     timeout: 30000, // 30 seconds for analysis endpoints
-    enableMockMode: process.env.EXPO_PUBLIC_ENABLE_MOCKS !== 'false', // Default to mocked in dev
+    enableMockMode: true, // Enable selective mocking since some endpoints don't exist yet
   },
   
   endpoints: {
     auth: {
-      login: { useMock: true },
-      logout: { useMock: true },
-      refreshToken: { useMock: true },
-      register: { useMock: true },
+      login: { useMock: false },        // ✅ Real endpoint exists
+      logout: { useMock: false },       // ✅ Real endpoint exists
+      refreshToken: { useMock: false }, // ✅ Real endpoint exists
+      register: { useMock: false },     // ✅ Real endpoint exists
     },
     
     content: {
       analyzeUrl: { 
-        useMock: true,   // 🎯 Set to false when backend endpoint is ready
-        timeout: 60000   // Longer timeout for analysis
+        useMock: false,   // ✅ Real endpoint exists (/api/tiktok/predict)
+        timeout: 120000   // 2 minutes for video analysis
       },
-      getFlaggedContent: { useMock: true },
-      submitFeedback: { useMock: true },
-      getDashboardSummary: { useMock: true },
-      getAnalytics: { useMock: true },
+      getFlaggedContent: { useMock: true },    // ❌ Endpoint doesn't exist yet
+      submitFeedback: { useMock: true },       // ❌ Endpoint doesn't exist yet
+      getDashboardSummary: { useMock: true },  // ❌ Endpoint doesn't exist yet
+      getAnalytics: { useMock: true },         // ❌ Endpoint doesn't exist yet
     },
     
     user: {
-      getProfile: { useMock: true },
-      updateProfile: { useMock: true },
-      getSettings: { useMock: true },
-      updateSettings: { useMock: true },
+      getProfile: { useMock: true },     // ❌ Endpoint doesn't exist yet
+      updateProfile: { useMock: true },  // ❌ Endpoint doesn't exist yet
+      getSettings: { useMock: true },    // ❌ Endpoint doesn't exist yet
+      updateSettings: { useMock: true }, // ❌ Endpoint doesn't exist yet
     },
     
     tiktok: {
-      initiateAuth: { useMock: true },
-      completeAuth: { useMock: true },
-      getUserFeed: { useMock: true },
-      refreshFeed: { useMock: true },
-      disconnect: { useMock: true },
+      initiateAuth: { useMock: true },   // ❌ Endpoint doesn't exist yet
+      completeAuth: { useMock: true },   // ❌ Endpoint doesn't exist yet
+      getUserFeed: { useMock: true },    // ❌ Endpoint doesn't exist yet
+      refreshFeed: { useMock: true },    // ❌ Endpoint doesn't exist yet
+      disconnect: { useMock: true },     // ❌ Endpoint doesn't exist yet
     },
   },
 };

@@ -4,13 +4,13 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
 from app.api.tiktok_scrapper import router as tiktok_router
 from app.api.auth import router as auth_router
-from app.api.etl import router as etl_router
 from app.models import HealthCheckResponse, ApiResponse
 from urllib.parse import urlparse
 from psycopg2 import sql
 
 # DB init imports
 import os
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 import psycopg2
@@ -40,12 +40,73 @@ async def ensure_json_content_type(request: Request, call_next):
     response = await call_next(request)
     return response
 
+def _get_secret(secret_name: str, region: str = "us-east-1") -> dict:
+    """
+    Retrieve secrets from AWS Secrets Manager when running in AWS environment.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        session = boto3.session.Session()
+        client = session.client(
+            service_name='secretsmanager',
+            region_name=region
+        )
+        
+        try:
+            get_secret_value_response = client.get_secret_value(SecretId=secret_name)
+        except ClientError as e:
+            print(f"[AWS SECRETS] Error retrieving secret {secret_name}: {e}")
+            raise e
+        
+        # Secrets Manager stores secrets as JSON strings
+        secret = get_secret_value_response['SecretString']
+        return json.loads(secret)
+    except ImportError:
+        print("[AWS SECRETS] boto3 not installed, skipping Secrets Manager")
+        return {}
+    except Exception as e:
+        print(f"[AWS SECRETS] Failed to get secret {secret_name}: {e}")
+        return {}
+
+def _is_aws_environment() -> bool:
+    """
+    Check if running in AWS environment (ECS, EC2, Lambda, etc.)
+    """
+    return (
+        os.getenv("ENVIRONMENT") in ["prod", "staging"] or
+        os.getenv("AWS_EXECUTION_ENV") is not None or
+        os.getenv("ECS_CONTAINER_METADATA_URI") is not None
+    )
+
 def _get_database_url() -> str:
     """
     Resolve DATABASE_URL from environment or construct from PG* vars.
+    In AWS, retrieve from Secrets Manager.
     Fallback: postgresql://postgres:postgres@localhost:5432/anchor
     """
-    # Load .env from backend/.env
+    # Check if running in AWS environment
+    if _is_aws_environment():
+        print("[DB INIT] Running in AWS environment, fetching credentials from Secrets Manager")
+        try:
+            secret_name = f"anchor/db-credentials-{os.getenv('ENVIRONMENT', 'prod')}"
+            db_secret = _get_secret(secret_name, os.getenv("AWS_REGION", "us-east-1"))
+            
+            if db_secret:
+                host = db_secret.get("host")
+                port = db_secret.get("port", 5432)
+                user = db_secret.get("username")
+                password = db_secret.get("password")
+                dbname = db_secret.get("dbname")
+                
+                if all([host, user, password, dbname]):
+                    print(f"[DB INIT] Using database credentials from Secrets Manager")
+                    return f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+        except Exception as e:
+            print(f"[DB INIT] Failed to get credentials from Secrets Manager: {e}")
+    
+    # Load .env from backend/.env for local development
     env_path = Path(__file__).resolve().parents[1] / ".env"
     if env_path.exists():
         load_dotenv(dotenv_path=env_path)
@@ -131,7 +192,6 @@ app.add_middleware(
 # Include routers
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(tiktok_router, prefix="/api/tiktok", tags=["TikTok Analysis"])
-app.include_router(etl_router, prefix="/api/etl", tags=["ETL Operations"])
 
 @app.on_event("startup")
 def init_db_on_startup():
@@ -153,7 +213,6 @@ async def root():
         "endpoints": {
             "authentication": "/auth",
             "tiktok_analysis": "/api/tiktok",
-            "etl_operations": "/api/etl",
             "documentation": "/docs"
         }
     }
@@ -166,8 +225,7 @@ async def health_check():
         database="connected",
         services={
             "auth": "operational",
-            "tiktok_analysis": "operational",
-            "etl": "operational"
+            "tiktok_analysis": "operational"
         }
     )
 

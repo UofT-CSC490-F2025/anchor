@@ -4,13 +4,17 @@ import requests, os, uuid, cv2, yt_dlp, dotenv, pytesseract
 import speech_recognition as sr
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from transformers import pipeline
+import tempfile
+import shutil
+from pathlib import Path
 
 # Import consolidated models
 from app.models import TikTokPredictRequest, TikTokPredictResponse, DeepfakeCheckResult, FactCheckResult
 
 router = APIRouter()
 dotenv.load_dotenv()
-pytesseract.pytesseract.tesseract_cmd = r'C:\Users\Hardik\OneDrive - University of Toronto\4th Year\CSC490\lib\tesseract.exe'  # Update this path as needed
+pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT_CMD')
+
 try:
     summarization_pipeline = pipeline("summarization", model="facebook/bart-large-cnn")
 except Exception as e:
@@ -21,6 +25,7 @@ except Exception as e:
 async def predict_tiktok_videos(request: TikTokPredictRequest):#, current_user: dict = Depends(get_current_user)):
     """
     Predict TikTok videos from a given URL.
+    Uses temporary directory that is cleaned up after processing.
     """
     # if not current_user:
     #     raise HTTPException(
@@ -29,98 +34,134 @@ async def predict_tiktok_videos(request: TikTokPredictRequest):#, current_user: 
     #         headers={"WWW-Authenticate": "Bearer"},
     #     )
     
-    # Placeholder for actual scraping logic
-    file_path, file_name = _scrape_tiktok_videos(str(request.url))
-    print(f"Scraped file path: {file_path}, file name: {file_name}")
-    if not file_path:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to scrape TikTok videos.",
-        )
+    # Create a unique temporary directory for this request
+    temp_dir = tempfile.mkdtemp(prefix="tiktok_analysis_")
+    
+    try:
+        # Scrape TikTok video into temp directory
+        file_path, file_name = _scrape_tiktok_videos(str(request.url), temp_dir)
+        print(f"Scraped file path: {file_path}, file name: {file_name}")
+        if not file_path:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to scrape TikTok videos.",
+            )
 
-    # Extract frames from the downloaded video
-    frames_output_dir = os.path.join("frames", str(uuid.uuid4()))
-    frame_data = _extract_frames_from_video(file_path, frames_output_dir)
-    if not frame_data:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to extract frames from video.",
-        )
-    # Perform OCR on the first frame as an example
-    ocr_text = ""
-    for frame in os.listdir(frames_output_dir):
-        try:   
-            frame_text = _get_text_from_image(os.path.join(frames_output_dir, frame))
-            if frame_text.strip() != "":
-                ocr_text += frame_text.strip() + " "    
-        except Exception as e:
+        # Extract frames from the downloaded video
+        frames_output_dir = os.path.join(temp_dir, "frames")
+        frame_data = _extract_frames_from_video(file_path, frames_output_dir)
+        if not frame_data:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to extract text from image.",
+                detail="Failed to extract frames from video.",
+            )
+        
+        # Perform OCR on frames
+        ocr_text = ""
+        for frame in os.listdir(frames_output_dir):
+            try:   
+                frame_text = _get_text_from_image(os.path.join(frames_output_dir, frame))
+                if frame_text.strip() != "":
+                    ocr_text += frame_text.strip() + " "    
+            except Exception as e:
+                print(f"Warning: Failed to extract text from frame {frame}: {e}")
+                continue
+        
+        # Extract audio and transcribe if available
+        audio_text = ""
+        audio_path = os.path.join(temp_dir, "temp_audio.wav")
+        try:
+            video_clip = VideoFileClip(file_path)
+            if video_clip.audio is not None:
+                video_clip.audio.write_audiofile(audio_path, logger=None)
+                audio_text = _get_text_from_audio(audio_path)
+                video_clip.audio.close()
+            video_clip.close()
+        except Exception as e:
+            print(f"Warning: Failed to extract audio: {e}")
+            audio_text = ""
+
+        full_text = ocr_text + " " + audio_text
+
+        # Summarize the extracted text
+        if summarization_pipeline and full_text.strip():
+            try:
+                # Ensure text is not too long for the model
+                max_length = min(1024, len(full_text.split()))
+                ocr_summary = summarization_pipeline(
+                    full_text[:4000],  # Limit input length
+                    max_length=50, 
+                    min_length=10, 
+                    do_sample=False
+                )[0]['summary_text']
+            except Exception as e:
+                print(f"Warning: Summarization failed: {e}")
+                ocr_summary = full_text[:200]  # Use truncated text as fallback
+        else:
+            ocr_summary = full_text[:200] if full_text.strip() else "No text content found"
+
+        # Deepfake detection placeholder
+        deepfake_check = DeepfakeCheckResult(
+            status="not_implemented", 
+            message="Deepfake detection not yet implemented"
+        )
+
+        # Fact-check the extracted text
+        claim_buster_results = _claim_buster_api_check(ocr_summary)
+        if claim_buster_results is None:
+            fact_check_results = FactCheckResult(
+                status="failed", 
+                message="Failed to perform fact-checking"
+            )
+        else:
+            fact_check_results = FactCheckResult(
+                status="completed",
+                claims=claim_buster_results.get("claims", []),
+                message="Fact-checking completed successfully"
+            )
+
+        return TikTokPredictResponse(
+            file_name=file_name,
+            deepfake_check=deepfake_check,
+            fact_check_results=fact_check_results
         )
     
-    # If the video has audio, extract text from it
-    audio_text = ""
-    try:
-        video_clip = VideoFileClip(file_path)
-        if video_clip.audio is not None:
-            video_clip.audio.write_audiofile("temp_audio.wav")
-            audio_text = _get_text_from_audio("temp_audio.wav")
-            video_clip.audio.close()
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
+        # Catch any unexpected errors
+        print(f"Error processing TikTok video: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to extract audio from video.",
+            detail=f"Error processing video: {str(e)}"
         )
+    finally:
+        # Clean up temporary directory and all its contents
+        try:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+                print(f"Cleaned up temporary directory: {temp_dir}")
+        except Exception as e:
+            print(f"Warning: Failed to cleanup temp directory {temp_dir}: {e}")
 
-    full_text = ocr_text + " " + audio_text
-
-    if summarization_pipeline:
-        ocr_summary = summarization_pipeline(full_text, max_length=50, min_length=10, do_sample=False)[0]['summary_text']
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Summarization model not available."
-        )
-
-    # check_deepfake = _deepware_api_check(file_path)
-    deepfake_check = DeepfakeCheckResult(
-        status="not_implemented", 
-        message="Deepfake detection not yet implemented"
-    )
-
-    # Fact-check the extracted text
-    claim_buster_results = _claim_buster_api_check(ocr_summary)
-    if claim_buster_results is None:
-        fact_check_results = FactCheckResult(
-            status="failed", 
-            message="Failed to perform fact-checking"
-        )
-    else:
-        fact_check_results = FactCheckResult(
-            status="completed",
-            claims=claim_buster_results.get("claims", []),
-            message="Fact-checking completed successfully"
-        )
-
-    return TikTokPredictResponse(
-        file_name=file_name,
-        deepfake_check=deepfake_check,
-        fact_check_results=fact_check_results
-    )
-
-def _scrape_tiktok_videos(url: str):
-    # Placeholder for actual TikTok scraping logic
-    # This function should return a list of video data dictionaries
+def _scrape_tiktok_videos(url: str, download_dir: str):
+    """
+    Download TikTok video to specified directory.
+    
+    Args:
+        url: TikTok video URL
+        download_dir: Directory to save the video
+        
+    Returns:
+        tuple: (file_path, file_name) or (None, error_message)
+    """
     try:
-        # Create downloads directory if it doesn't exist
-        download_dir = "downloads"
+        # Ensure download directory exists
         os.makedirs(download_dir, exist_ok=True)
         
-        output_path = download_dir
         file_name = f"{uuid.uuid4()}.mp4"
-        # Get the file path of the downloaded video
-        file_path = os.path.join(output_path, file_name)
+        file_path = os.path.join(download_dir, file_name)
         ydl_opts = {
             'outtmpl': file_path,
             'format': 'mp4',

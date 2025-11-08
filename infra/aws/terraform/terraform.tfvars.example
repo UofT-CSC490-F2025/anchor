@@ -1,0 +1,40 @@
+# Example terraform.tfvars file
+# Copy this to terraform.tfvars and fill in your values
+
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "prod"
+
+# Database Configuration
+db_name     = "anchor"
+db_username = "anchoradmin"
+db_password = "CHANGE_ME_STRONG_PASSWORD_HERE" # Change this!
+
+# JWT Configuration
+jwt_secret_key              = "CHANGE_ME_RANDOM_SECRET_KEY_HERE" # Generate a strong random key
+jwt_algorithm               = "HS256"
+access_token_expire_minutes = 30
+refresh_token_expire_days   = 7
+
+# ECS Configuration
+ecs_task_cpu      = 2048 # 2 vCPU
+ecs_task_memory   = 4096 # 4 GB
+ecs_desired_count = 2
+ecs_min_capacity  = 2
+ecs_max_capacity  = 10
+
+# RDS Configuration
+db_instance_class        = "db.t3.medium"
+db_allocated_storage     = 100
+db_max_allocated_storage = 500
+
+# Monitoring Configuration
+enable_enhanced_monitoring = true
+monitoring_interval        = 60
+
+# Additional Tags
+tags = {
+  Team        = "Engineering"
+  CostCenter  = "Development"
+  Application = "Anchor"
+}

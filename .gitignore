@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+.env
+# Node
+node_modules/
+# General
+.DS_Store
+*.sqlite3
+frontend/node_modules 2/
+downloads/
+frames/
